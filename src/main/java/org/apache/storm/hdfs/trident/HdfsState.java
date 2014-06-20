@@ -3,12 +3,13 @@ package org.apache.storm.hdfs.trident;
 import backtype.storm.task.IMetricsContext;
 import backtype.storm.topology.FailedException;
 import org.apache.hadoop.conf.Configuration;
-import org.apache.hadoop.fs.FSDataOutputStream;
 import org.apache.hadoop.fs.FileSystem;
-import org.apache.hadoop.fs.Path;
-import org.apache.hadoop.hdfs.client.HdfsDataOutputStream;
 import org.apache.hadoop.io.SequenceFile;
 import org.apache.hadoop.io.compress.CompressionCodecFactory;
+import org.apache.storm.hdfs.trident.rotation.TimeBasedRotationPolicy;
+import org.apache.storm.hdfs.common.filemanager.FileManager;
+import org.apache.storm.hdfs.common.filemanager.HDFSFileManager;
+import org.apache.storm.hdfs.common.filemanager.SequenceFileManager;
 import org.apache.storm.hdfs.common.rotation.RotationAction;
 import org.apache.storm.hdfs.common.security.HdfsSecurityUtil;
 import org.apache.storm.hdfs.trident.format.FileNameFormat;
@@ -26,7 +27,6 @@ import java.io.IOException;
 import java.io.Serializable;
 import java.net.URI;
 import java.util.ArrayList;
-import java.util.EnumSet;
 import java.util.List;
 import java.util.Map;
 
@@ -37,38 +37,15 @@ public class HdfsState implements State {
         protected String fsUrl;
         protected String configKey;
         protected FileSystem fs;
-        private Path currentFile;
         protected FileRotationPolicy rotationPolicy;
         protected FileNameFormat fileNameFormat;
-        protected int rotation = 0;
         protected Configuration hdfsConfig;
         protected ArrayList<RotationAction> rotationActions = new ArrayList<RotationAction>();
-
-        abstract void closeOutputFile() throws IOException;
-
-        abstract Path createOutputFile() throws IOException;
+        protected FileManager fileManager;
 
         abstract void execute(List<TridentTuple> tuples) throws IOException;
 
         abstract void doPrepare(Map conf, int partitionIndex, int numPartitions) throws IOException;
-
-        protected void rotateOutputFile() throws IOException {
-            LOG.info("Rotating output file...");
-            long start = System.currentTimeMillis();
-            closeOutputFile();
-            this.rotation++;
-
-            Path newFile = createOutputFile();
-            LOG.info("Performing {} file rotation actions.", this.rotationActions.size());
-            for(RotationAction action : this.rotationActions){
-                action.execute(this.fs, this.currentFile);
-            }
-            this.currentFile = newFile;
-            long time = System.currentTimeMillis() - start;
-            LOG.info("File rotation took {} ms.", time);
-
-
-        }
 
         void prepare(Map conf, int partitionIndex, int numPartitions){
             if (this.rotationPolicy == null) throw new IllegalStateException("RotationPolicy must be specified.");
@@ -83,11 +60,16 @@ public class HdfsState implements State {
                     this.hdfsConfig.set(key, String.valueOf(map.get(key)));
                 }
             }
-            try{
+
+            try {
                 HdfsSecurityUtil.login(conf, hdfsConfig);
                 doPrepare(conf, partitionIndex, numPartitions);
-                this.currentFile = createOutputFile();
 
+                if(this.rotationPolicy instanceof TimeBasedRotationPolicy) {
+                    ((TimeBasedRotationPolicy)this.rotationPolicy).prepare(fileManager);
+                }
+
+                fileManager.createOutputFile();
             } catch (Exception e){
                 throw new RuntimeException("Error preparing HdfsState: " + e.getMessage(), e);
             }
@@ -97,9 +79,7 @@ public class HdfsState implements State {
 
     public static class HdfsFileOptions extends Options {
 
-        private FSDataOutputStream out;
         protected RecordFormat format;
-        private long offset = 0;
 
         public HdfsFileOptions withFsUrl(String fsUrl){
             this.fsUrl = fsUrl;
@@ -135,41 +115,26 @@ public class HdfsState implements State {
         void doPrepare(Map conf, int partitionIndex, int numPartitions) throws IOException {
             LOG.info("Preparing HDFS Bolt...");
             this.fs = FileSystem.get(URI.create(this.fsUrl), hdfsConfig);
-        }
+            HDFSFileManager hdfsFileManager = new HDFSFileManager()
+                    .withFileNameFormat(this.fileNameFormat)
+                    .withFsUrl(this.fsUrl)
+                    .withHdfsConfig(this.hdfsConfig)
+                    .withFs(this.fs);
+            for(RotationAction rotationAction : rotationActions) {
+                hdfsFileManager.addRotationAction(rotationAction);
+            }
 
-        @Override
-        void closeOutputFile() throws IOException {
-            this.out.hsync();
-            this.out.close();
-        }
-
-        @Override
-        Path createOutputFile() throws IOException {
-            Path path = new Path(this.fileNameFormat.getPath(), this.fileNameFormat.getName(this.rotation, System.currentTimeMillis()));
-            this.out = this.fs.create(path);
-            return path;
+            this.fileManager = hdfsFileManager;
         }
 
         @Override
         public void execute(List<TridentTuple> tuples) throws IOException {
-            boolean rotated = false;
             for(TridentTuple tuple : tuples){
                 byte[] bytes = this.format.format(tuple);
-                out.write(bytes);
-                this.offset += bytes.length;
-
-                if(this.rotationPolicy.mark(tuple, this.offset)){
-                    rotateOutputFile();
-                    this.offset = 0;
+                long offset = fileManager.append(bytes);
+                if(this.rotationPolicy.mark(tuple, offset)){
+                    fileManager.rotate();
                     this.rotationPolicy.reset();
-                    rotated = true;
-                }
-            }
-            if(!rotated){
-                if(this.out instanceof HdfsDataOutputStream){
-                    ((HdfsDataOutputStream)this.out).hsync(EnumSet.of(HdfsDataOutputStream.SyncFlag.UPDATE_LENGTH));
-                } else {
-                    this.out.hsync();
                 }
             }
         }
@@ -178,7 +143,6 @@ public class HdfsState implements State {
     public static class SequenceFileOptions extends Options {
         private SequenceFormat format;
         private SequenceFile.CompressionType compressionType = SequenceFile.CompressionType.RECORD;
-        private SequenceFile.Writer writer;
         private String compressionCodec = "default";
         private transient CompressionCodecFactory codecFactory;
 
@@ -229,35 +193,30 @@ public class HdfsState implements State {
 
             this.fs = FileSystem.get(URI.create(this.fsUrl), hdfsConfig);
             this.codecFactory = new CompressionCodecFactory(hdfsConfig);
-        }
 
-        @Override
-        Path createOutputFile() throws IOException {
-            Path p = new Path(this.fsUrl + this.fileNameFormat.getPath(), this.fileNameFormat.getName(this.rotation, System.currentTimeMillis()));
-            this.writer = SequenceFile.createWriter(
-                    this.hdfsConfig,
-                    SequenceFile.Writer.file(p),
-                    SequenceFile.Writer.keyClass(this.format.keyClass()),
-                    SequenceFile.Writer.valueClass(this.format.valueClass()),
-                    SequenceFile.Writer.compression(this.compressionType, this.codecFactory.getCodecByName(this.compressionCodec))
-            );
-            return p;
-        }
+            SequenceFileManager sequenceFileManager = new SequenceFileManager()
+                    .withFileNameFormat(this.fileNameFormat)
+                    .withFsUrl(this.fsUrl)
+                    .withHdfsConfig(this.hdfsConfig)
+                    .withFs(this.fs)
+                    .withSequenceFormat(this.format)
+                    .withCompressionCodec(this.compressionCodec)
+                    .withCompressionType(this.compressionType)
+                    .withCodecFactory(codecFactory);
+            for(RotationAction rotationAction : rotationActions) {
+                sequenceFileManager.addRotationAction(rotationAction);
+            }
 
-        @Override
-        void closeOutputFile() throws IOException {
-            this.writer.hsync();
-            this.writer.close();
+            this.fileManager = sequenceFileManager;
         }
 
         @Override
         public void execute(List<TridentTuple> tuples) throws IOException {
             for(TridentTuple tuple : tuples) {
-                this.writer.append(this.format.key(tuple), this.format.value(tuple));
-                long offset = this.writer.getLength();
+                long offset = fileManager.append(this.format.key(tuple), this.format.value(tuple));
 
                 if (this.rotationPolicy.mark(tuple, offset)) {
-                    rotateOutputFile();
+                    fileManager.rotate();
                     this.rotationPolicy.reset();
                 }
             }

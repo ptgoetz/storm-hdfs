@@ -21,9 +21,9 @@ import backtype.storm.task.OutputCollector;
 import backtype.storm.task.TopologyContext;
 import backtype.storm.tuple.Tuple;
 import org.apache.hadoop.fs.FileSystem;
-import org.apache.hadoop.fs.Path;
 import org.apache.hadoop.io.SequenceFile;
 import org.apache.hadoop.io.compress.CompressionCodecFactory;
+import org.apache.storm.hdfs.common.filemanager.SequenceFileManager;
 import org.apache.storm.hdfs.bolt.format.FileNameFormat;
 import org.apache.storm.hdfs.bolt.format.SequenceFormat;
 import org.apache.storm.hdfs.bolt.rotation.FileRotationPolicy;
@@ -49,12 +49,8 @@ public class SequenceFileBolt extends AbstractHdfsBolt {
     public SequenceFileBolt() {
     }
 
-    public SequenceFileBolt withCompressionCodec(String codec){
-        this.compressionCodec = codec;
-        return this;
-    }
 
-    public SequenceFileBolt withFsUrl(String fsUrl) {
+    public SequenceFileBolt withFsUrl(String fsUrl){
         this.fsUrl = fsUrl;
         return this;
     }
@@ -64,33 +60,39 @@ public class SequenceFileBolt extends AbstractHdfsBolt {
         return this;
     }
 
-    public SequenceFileBolt withFileNameFormat(FileNameFormat fileNameFormat) {
+    public SequenceFileBolt withFileNameFormat(FileNameFormat fileNameFormat){
         this.fileNameFormat = fileNameFormat;
         return this;
     }
+
+    public SequenceFileBolt withSyncPolicy(SyncPolicy syncPolicy){
+        this.syncPolicy = syncPolicy;
+        return this;
+    }
+
+    public SequenceFileBolt withRotationPolicy(FileRotationPolicy rotationPolicy){
+        this.rotationPolicy = rotationPolicy;
+        return this;
+    }
+
+    public SequenceFileBolt addRotationAction(RotationAction action){
+        this.rotationActions.add(action);
+        return this;
+    }
+
+    public SequenceFileBolt withCompressionCodec(String codec){
+        this.compressionCodec = codec;
+        return this;
+    }
+
 
     public SequenceFileBolt withSequenceFormat(SequenceFormat format) {
         this.format = format;
         return this;
     }
 
-    public SequenceFileBolt withSyncPolicy(SyncPolicy syncPolicy) {
-        this.syncPolicy = syncPolicy;
-        return this;
-    }
-
-    public SequenceFileBolt withRotationPolicy(FileRotationPolicy rotationPolicy) {
-        this.rotationPolicy = rotationPolicy;
-        return this;
-    }
-
     public SequenceFileBolt withCompressionType(SequenceFile.CompressionType compressionType){
         this.compressionType = compressionType;
-        return this;
-    }
-
-    public SequenceFileBolt addRotationAction(RotationAction action){
-        this.rotationActions.add(action);
         return this;
     }
 
@@ -101,21 +103,36 @@ public class SequenceFileBolt extends AbstractHdfsBolt {
 
         this.fs = FileSystem.get(URI.create(this.fsUrl), hdfsConfig);
         this.codecFactory = new CompressionCodecFactory(hdfsConfig);
+
+        SequenceFileManager seqFileManager = new SequenceFileManager()
+                .withFileNameFormat(this.fileNameFormat)
+                .withFsUrl(this.fsUrl)
+                .withHdfsConfig(this.hdfsConfig)
+                .withFs(this.fs)
+                .withSequenceFormat(format)
+                .withCompressionCodec(this.compressionCodec)
+                .withCompressionType(this.compressionType)
+                .withCodecFactory(codecFactory);
+
+        for(RotationAction rotationAction : rotationActions) {
+            seqFileManager.addRotationAction(rotationAction);
+        }
+
+        this.fileManager = seqFileManager;
     }
 
     @Override
     public void execute(Tuple tuple) {
         try {
-            this.writer.append(this.format.key(tuple), this.format.value(tuple));
-            long offset = this.writer.getLength();
+            long offset = this.fileManager.append(this.format.key(tuple), this.format.value(tuple));
             this.collector.ack(tuple);
 
             if (this.syncPolicy.mark(tuple, offset)) {
-                this.writer.hsync();
+                this.fileManager.sync();
                 this.syncPolicy.reset();
             }
             if (this.rotationPolicy.mark(tuple, offset)) {
-                rotateOutputFile();
+                fileManager.rotate();
                 this.rotationPolicy.reset();
             }
         } catch (IOException e) {
@@ -124,23 +141,4 @@ public class SequenceFileBolt extends AbstractHdfsBolt {
         }
 
     }
-
-    Path createOutputFile() throws IOException {
-        Path p = new Path(this.fsUrl + this.fileNameFormat.getPath(), this.fileNameFormat.getName(this.rotation, System.currentTimeMillis()));
-        this.writer = SequenceFile.createWriter(
-                this.hdfsConfig,
-                SequenceFile.Writer.file(p),
-                SequenceFile.Writer.keyClass(this.format.keyClass()),
-                SequenceFile.Writer.valueClass(this.format.valueClass()),
-                SequenceFile.Writer.compression(this.compressionType, this.codecFactory.getCodecByName(this.compressionCodec))
-        );
-        return p;
-    }
-
-    void closeOutputFile() throws IOException {
-        this.writer.hsync();
-        this.writer.close();
-    }
-
-
 }

@@ -23,11 +23,12 @@ import backtype.storm.topology.OutputFieldsDeclarer;
 import backtype.storm.topology.base.BaseRichBolt;
 import org.apache.hadoop.conf.Configuration;
 import org.apache.hadoop.fs.FileSystem;
-import org.apache.hadoop.fs.Path;
 import org.apache.storm.hdfs.bolt.format.FileNameFormat;
 import org.apache.storm.hdfs.bolt.rotation.FileRotationPolicy;
+import org.apache.storm.hdfs.bolt.rotation.TimeBasedRotationPolicy;
 import org.apache.storm.hdfs.bolt.sync.SyncPolicy;
 import org.apache.storm.hdfs.common.rotation.RotationAction;
+import org.apache.storm.hdfs.common.filemanager.FileManager;
 import org.apache.storm.hdfs.common.security.HdfsSecurityUtil;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -40,33 +41,15 @@ public abstract class AbstractHdfsBolt extends BaseRichBolt {
     private static final Logger LOG = LoggerFactory.getLogger(AbstractHdfsBolt.class);
 
     protected ArrayList<RotationAction> rotationActions = new ArrayList<RotationAction>();
-    private Path currentFile;
     protected OutputCollector collector;
     protected FileSystem fs;
     protected SyncPolicy syncPolicy;
     protected FileRotationPolicy rotationPolicy;
     protected FileNameFormat fileNameFormat;
-    protected int rotation = 0;
     protected String fsUrl;
     protected String configKey;
-
+    protected FileManager fileManager;
     protected Configuration hdfsConfig;
-
-    protected void rotateOutputFile() throws IOException {
-        LOG.info("Rotating output file...");
-        long start = System.currentTimeMillis();
-        closeOutputFile();
-        this.rotation++;
-
-        Path newFile = createOutputFile();
-        LOG.info("Performing {} file rotation actions.", this.rotationActions.size());
-        for(RotationAction action : this.rotationActions){
-            action.execute(this.fs, this.currentFile);
-        }
-        this.currentFile = newFile;
-        long time = System.currentTimeMillis() - start;
-        LOG.info("File rotation took {} ms.", time);
-    }
 
     /**
      * Marked as final to prevent override. Subclasses should implement the doPrepare() method.
@@ -91,12 +74,15 @@ public abstract class AbstractHdfsBolt extends BaseRichBolt {
             }
         }
 
-
         try{
             HdfsSecurityUtil.login(conf, hdfsConfig);
             doPrepare(conf, topologyContext, collector);
-            this.currentFile = createOutputFile();
 
+            if(this.rotationPolicy instanceof TimeBasedRotationPolicy) {
+                ((TimeBasedRotationPolicy)this.rotationPolicy).prepare(fileManager);
+            }
+
+            fileManager.createOutputFile();
         } catch (Exception e){
             throw new RuntimeException("Error preparing HdfsBolt: " + e.getMessage(), e);
         }
@@ -105,10 +91,6 @@ public abstract class AbstractHdfsBolt extends BaseRichBolt {
     @Override
     public void declareOutputFields(OutputFieldsDeclarer outputFieldsDeclarer) {
     }
-
-    abstract void closeOutputFile() throws IOException;
-
-    abstract Path createOutputFile() throws IOException;
 
     abstract void doPrepare(Map conf, TopologyContext topologyContext, OutputCollector collector) throws IOException;
 
