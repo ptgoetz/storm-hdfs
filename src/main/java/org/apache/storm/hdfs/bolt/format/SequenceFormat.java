@@ -2,6 +2,7 @@ package org.apache.storm.hdfs.bolt.format;
 
 import backtype.storm.tuple.Tuple;
 import org.apache.hadoop.io.Writable;
+import org.apache.storm.hdfs.common.format.CommonSequenceFormat;
 
 import java.io.Serializable;
 
@@ -9,20 +10,7 @@ import java.io.Serializable;
  * Interface for converting <code>Tuple</code> objects to HDFS sequence file key-value pairs.
  *
  */
-public interface SequenceFormat extends Serializable {
-    /**
-     * Key class used by implementation (e.g. IntWritable.class, etc.)
-     *
-     * @return
-     */
-    Class keyClass();
-
-    /**
-     * Value class used by implementation (e.g. Text.class, etc.)
-     * @return
-     */
-    Class valueClass();
-
+public interface SequenceFormat extends CommonSequenceFormat {
     /**
      * Given a tuple, return the key that should be written to the sequence file.
      *
