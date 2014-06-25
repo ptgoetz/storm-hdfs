@@ -47,7 +47,8 @@ public class HdfsSecurityUtil {
     }
 
     public static void relogin() throws IOException {
-        UserGroupInformation.getCurrentUser().checkTGTAndReloginFromKeytab();
+        final UserGroupInformation ugi = UserGroupInformation.getLoginUser();
+        ugi.reloginFromTicketCache();
     }
 
 }
