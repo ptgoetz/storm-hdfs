@@ -25,6 +25,7 @@ import org.apache.hadoop.fs.FileSystem;
 import org.apache.hadoop.fs.Path;
 import org.apache.hadoop.hdfs.client.HdfsDataOutputStream;
 import org.apache.hadoop.hdfs.client.HdfsDataOutputStream.SyncFlag;
+import org.apache.hadoop.security.UserGroupInformation;
 import org.apache.storm.hdfs.bolt.format.FileNameFormat;
 import org.apache.storm.hdfs.bolt.format.RecordFormat;
 import org.apache.storm.hdfs.bolt.rotation.FileRotationPolicy;
@@ -45,7 +46,6 @@ public class HdfsBolt extends AbstractHdfsBolt{
     private FSDataOutputStream out;
     private RecordFormat format;
     private long offset = 0;
-    private Map conf;
 
     public HdfsBolt withFsUrl(String fsUrl){
         this.fsUrl = fsUrl;
@@ -85,7 +85,7 @@ public class HdfsBolt extends AbstractHdfsBolt{
     @Override
     public void doPrepare(Map conf, TopologyContext topologyContext, OutputCollector collector) throws IOException {
         LOG.info("Preparing HDFS Bolt...");
-        this.conf = conf;
+
         this.fs = FileSystem.get(URI.create(this.fsUrl), hdfsConfig);
     }
 
@@ -126,7 +126,7 @@ public class HdfsBolt extends AbstractHdfsBolt{
 
     @Override
     Path createOutputFile() throws IOException {
-        HdfsSecurityUtil.login(conf, this.hdfsConfig);
+        UserGroupInformation.getCurrentUser().checkTGTAndReloginFromKeytab();
         Path path = new Path(this.fileNameFormat.getPath(), this.fileNameFormat.getName(this.rotation, System.currentTimeMillis()));
         this.out = this.fs.create(path);
         return path;

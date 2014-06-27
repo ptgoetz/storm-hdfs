@@ -24,6 +24,7 @@ import org.apache.hadoop.fs.FileSystem;
 import org.apache.hadoop.fs.Path;
 import org.apache.hadoop.io.SequenceFile;
 import org.apache.hadoop.io.compress.CompressionCodecFactory;
+import org.apache.hadoop.security.UserGroupInformation;
 import org.apache.storm.hdfs.bolt.format.FileNameFormat;
 import org.apache.storm.hdfs.bolt.format.SequenceFormat;
 import org.apache.storm.hdfs.bolt.rotation.FileRotationPolicy;
@@ -46,7 +47,6 @@ public class SequenceFileBolt extends AbstractHdfsBolt {
 
     private String compressionCodec = "default";
     private transient CompressionCodecFactory codecFactory;
-    private Map conf;
 
     public SequenceFileBolt() {
     }
@@ -100,7 +100,7 @@ public class SequenceFileBolt extends AbstractHdfsBolt {
     public void doPrepare(Map conf, TopologyContext topologyContext, OutputCollector collector) throws IOException {
         LOG.info("Preparing Sequence File Bolt...");
         if (this.format == null) throw new IllegalStateException("SequenceFormat must be specified.");
-        this.conf = conf;
+
         this.fs = FileSystem.get(URI.create(this.fsUrl), hdfsConfig);
         this.codecFactory = new CompressionCodecFactory(hdfsConfig);
     }
@@ -128,7 +128,7 @@ public class SequenceFileBolt extends AbstractHdfsBolt {
     }
 
     Path createOutputFile() throws IOException {
-        HdfsSecurityUtil.login(conf, this.hdfsConfig);
+        UserGroupInformation.getCurrentUser().checkTGTAndReloginFromKeytab();
         Path p = new Path(this.fsUrl + this.fileNameFormat.getPath(), this.fileNameFormat.getName(this.rotation, System.currentTimeMillis()));
         this.writer = SequenceFile.createWriter(
                 this.hdfsConfig,
