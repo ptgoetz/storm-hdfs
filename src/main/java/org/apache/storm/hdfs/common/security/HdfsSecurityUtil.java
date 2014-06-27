@@ -45,4 +45,9 @@ public class HdfsSecurityUtil {
             SecurityUtil.login(hdfsConfig, STORM_KEYTAB_FILE_KEY, STORM_USER_NAME_KEY);
         }
     }
+
+    public static void relogin() throws IOException {
+        UserGroupInformation.getCurrentUser().checkTGTAndReloginFromKeytab();
+    }
+
 }
