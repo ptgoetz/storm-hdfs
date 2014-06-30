@@ -42,7 +42,7 @@ public class SequenceFileBolt extends AbstractHdfsBolt {
 
     private SequenceFormat format;
     private SequenceFile.CompressionType compressionType = SequenceFile.CompressionType.RECORD;
-    private SequenceFile.Writer writer;
+    private transient SequenceFile.Writer writer;
 
     private String compressionCodec = "default";
     private transient CompressionCodecFactory codecFactory;
@@ -107,16 +107,20 @@ public class SequenceFileBolt extends AbstractHdfsBolt {
     @Override
     public void execute(Tuple tuple) {
         try {
-            this.writer.append(this.format.key(tuple), this.format.value(tuple));
-            long offset = this.writer.getLength();
-            this.collector.ack(tuple);
+            long offset;
+            synchronized (this.writeLock) {
+                this.writer.append(this.format.key(tuple), this.format.value(tuple));
+                offset = this.writer.getLength();
 
-            if (this.syncPolicy.mark(tuple, offset)) {
-                this.writer.hsync();
-                this.syncPolicy.reset();
+                if (this.syncPolicy.mark(tuple, offset)) {
+                    this.writer.hsync();
+                    this.syncPolicy.reset();
+                }
             }
+
+            this.collector.ack(tuple);
             if (this.rotationPolicy.mark(tuple, offset)) {
-                rotateOutputFile();
+                rotateOutputFile(); // synchronized
                 this.rotationPolicy.reset();
             }
         } catch (IOException e) {
@@ -140,7 +144,6 @@ public class SequenceFileBolt extends AbstractHdfsBolt {
     }
 
     void closeOutputFile() throws IOException {
-        this.writer.hsync();
         this.writer.close();
     }
 
