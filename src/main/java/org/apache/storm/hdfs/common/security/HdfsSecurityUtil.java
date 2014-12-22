@@ -33,15 +33,12 @@ public class HdfsSecurityUtil {
     public static final String STORM_USER_NAME_KEY = "hdfs.kerberos.principal";
 
     public static void login(Map conf, Configuration hdfsConfig) throws IOException {
-        if (UserGroupInformation.isSecurityEnabled()) {
-            String keytab = (String) conf.get(STORM_KEYTAB_FILE_KEY);
-            if (keytab != null) {
-              hdfsConfig.set(STORM_KEYTAB_FILE_KEY, keytab);
-            }
-            String userName = (String) conf.get(STORM_USER_NAME_KEY);
-            if (userName != null) {
-              hdfsConfig.set(STORM_USER_NAME_KEY, userName);
-            }
+        String keytab = (String) conf.get(STORM_KEYTAB_FILE_KEY);
+        String userName = (String) conf.get(STORM_USER_NAME_KEY);
+
+        if (UserGroupInformation.isSecurityEnabled() && keytab != null && userName != null) {
+            hdfsConfig.set(STORM_KEYTAB_FILE_KEY, keytab);
+            hdfsConfig.set(STORM_USER_NAME_KEY, userName);
             SecurityUtil.login(hdfsConfig, STORM_KEYTAB_FILE_KEY, STORM_USER_NAME_KEY);
         }
     }
