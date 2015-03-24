@@ -16,18 +16,42 @@ RecordFormat format = new DelimitedRecordFormat()
 // sync the filesystem after every 1k tuples
 SyncPolicy syncPolicy = new CountSyncPolicy(1000);
 
-// rotate files when they reach 5MB
-FileRotationPolicy rotationPolicy = new FileSizeRotationPolicy(5.0f, Units.MB);
+// rotate files when they reach 5MB or when there is no write for 10 minutes
+FileRotationPolicy rotationPolicy = new TickingFileSizeRotationPolicy(5.0f, Units.MB).withTimeLimit(10.0f, TimeUnit.MINUTES);
 
-FileNameFormat fileNameFormat = new DefaultFileNameFormat()
-        .withPath("/foo/");
+// Add datetime and country fields as partition keys. 
+// Resulting path would be like /foo/2015_01_01/us/clicks_xyz.log  
+FileNameFormat fileNameFormat = new DefaultPartitionedFileNameFormat()
+				.withPath("/foo/")
+				.withPrefix("clicks")
+				.withExtension(".log")
+				.addPartitionKey("datetime", new ValueTransformer() {
+					private DateFormat dateFormat = new SimpleDateFormat("yyyy_MM_dd");
+					private Calendar calendar = GregorianCalendar.getInstance();
+					@Override
+					public String transform(String value) {
+						calendar.setTimeInMillis(Long.parseLong(value.trim()));
+						return dateFormat.format(calendar.getTime());
+					}
+				})
+				.addPartitionKey("country", new ValueTransformer() {
+					@Override
+					public String transform(String value) {
+						return value.trim().toLowerCase().replaceAll("-", "_");
+					}
+				});
 
-HdfsBolt bolt = new HdfsBolt()
-        .withFsUrl("hdfs://localhost:54310")
+// Instantiate the export manager
+AbstractExportManager exportManager = new DefaultExportManager()
         .withFileNameFormat(fileNameFormat)
-        .withRecordFormat(format)
-        .withRotationPolicy(rotationPolicy)
-        .withSyncPolicy(syncPolicy);
+        .withRecordFormat(recordFormat)
+        .withRotationPolicy(fileRotationPolicy)
+        .withSyncPolicy(syncPolicy)
+        .useHDFSForWrite();
+
+PartitionedHdfsBolt bolt = new PartitionedHdfsBolt()
+		.withFsUrl("hdfs://localhost:54310")
+		.withExportManager(exportManager);
 ```
 
 ### Packaging a Topology
