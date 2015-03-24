@@ -32,7 +32,7 @@ import org.apache.storm.hdfs.bolt.rotation.FileRotationPolicy;
 import org.apache.storm.hdfs.bolt.rotation.TickingFileRotationPolicy;
 import org.apache.storm.hdfs.bolt.sync.SyncPolicy;
 import org.apache.storm.hdfs.bolt.sync.TimedSyncPolicy;
-import org.apache.storm.hdfs.common.rotation.MultiFSRotationAction;
+import org.apache.storm.hdfs.common.rotation.multi.MultiFSRotationAction;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -42,8 +42,9 @@ import backtype.storm.tuple.Tuple;
 public abstract class AbstractExportManager implements Serializable {
 	private static final Logger LOG = LoggerFactory.getLogger(AbstractExportManager.class);
 
-	protected ArrayList<MultiFSRotationAction> rotationActions = new ArrayList<MultiFSRotationAction>();
 	private Path currentFile;
+	protected ArrayList<MultiFSRotationAction> rotationActions = new ArrayList<MultiFSRotationAction>();
+	protected boolean useHDFSForWrite = true;
 	protected OutputCollector collector;
 	protected transient FileSystem localFs;
 	protected transient FileSystem distributedFs;
@@ -82,6 +83,12 @@ public abstract class AbstractExportManager implements Serializable {
 	}
 
 	public final AbstractExportManager init() {
+		if(useHDFSForWrite){
+			this.writerFs = distributedFs;
+		}else{
+			this.writerFs = localFs;
+		}
+		
 		this.writeLock = new Object();
         if (this.syncPolicy == null) {
         	throw new IllegalStateException("SyncPolicy must be specified.");

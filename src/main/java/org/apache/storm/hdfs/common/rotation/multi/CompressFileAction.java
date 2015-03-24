@@ -15,7 +15,7 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-package org.apache.storm.hdfs.common.rotation;
+package org.apache.storm.hdfs.common.rotation.multi;
 
 import java.io.FileInputStream;
 import java.io.FileOutputStream;
@@ -60,11 +60,4 @@ public class CompressFileAction implements MultiFSRotationAction {
 			logger.error("Error when compressing file {}: {}", filePath, e.getMessage());
 		}
     }
-    
-    public static void main(String[] args){
-    	Path sourcePath = new Path("/data/stats/2014_12_12/dasdsa.log");
-    	Path destPath = new Path(sourcePath.getParent(), sourcePath.getName());
-    	System.out.println(destPath);
-    }
-
 }

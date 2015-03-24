@@ -31,7 +31,7 @@ import org.apache.storm.hdfs.bolt.format.RecordFormat;
 import org.apache.storm.hdfs.bolt.format.partition.PartitionedFileNameFormat;
 import org.apache.storm.hdfs.bolt.rotation.FileRotationPolicy;
 import org.apache.storm.hdfs.bolt.sync.SyncPolicy;
-import org.apache.storm.hdfs.common.rotation.MultiFSRotationAction;
+import org.apache.storm.hdfs.common.rotation.multi.MultiFSRotationAction;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -39,9 +39,7 @@ import backtype.storm.task.OutputCollector;
 import backtype.storm.tuple.Tuple;
 
 public class DefaultExportManager extends AbstractExportManager{
-
 	private static final Logger LOG = LoggerFactory.getLogger(PartitionedHdfsBolt.class);
-
     private transient FSDataOutputStream out;
 
 	public DefaultExportManager withDistributedFS(FileSystem distributedFS) {
@@ -55,12 +53,12 @@ public class DefaultExportManager extends AbstractExportManager{
 	}
 
 	public DefaultExportManager useLocalForWrite() {
-		this.writerFs = localFs;
+		this.useHDFSForWrite = false;
 		return this;
 	}
 	
-	public DefaultExportManager useDistributedForWrite() {
-		this.writerFs = distributedFs;
+	public DefaultExportManager useHDFSForWrite() {
+		this.useHDFSForWrite = true;
 		return this;
 	}
 	
@@ -101,7 +99,6 @@ public class DefaultExportManager extends AbstractExportManager{
             synchronized (this.writeLock) {
                 out.write(bytes);
                 this.offset += bytes.length;
-                this.syncOutputFile();
                 if (this.syncPolicy.mark(tuple, this.offset)) {
                 	this.syncOutputFile();
                     this.syncPolicy.reset();
@@ -135,11 +132,11 @@ public class DefaultExportManager extends AbstractExportManager{
     	}
     	
         Path path = new Path(destinationPath, this.fileNameFormat.getName(this.rotation, System.currentTimeMillis()));
-//        if(this.writerFs instanceof LocalFileSystem){
-//        	this.out = ((LocalFileSystem) this.writerFs).getRawFileSystem().create(path);
-//        }else{
-        this.out = this.writerFs.create(path);
-//        }
+		if (this.writerFs instanceof LocalFileSystem) {
+			this.out = ((LocalFileSystem) this.writerFs).getRawFileSystem().create(path);
+		} else {
+			this.out = this.writerFs.create(path);
+		}
         return path;
     }
 
@@ -151,5 +148,4 @@ public class DefaultExportManager extends AbstractExportManager{
             this.out.hsync();
         }
 	}
-	
 }

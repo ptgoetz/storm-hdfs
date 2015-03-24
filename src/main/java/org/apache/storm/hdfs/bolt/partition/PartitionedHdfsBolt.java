@@ -64,18 +64,22 @@ public class PartitionedHdfsBolt extends AbstractPartitionedHdfsBolt{
     @Override
     public void execute(Tuple tuple) {
 		((DefaultPartitionedFileNameFormat)this.exportManagerPrototype.fileNameFormat).initializePartitionWith(tuple);
-		String partition = ((DefaultPartitionedFileNameFormat)this.exportManagerPrototype.fileNameFormat).getPartition();
+		String partition = this.exportManagerPrototype.fileNameFormat.getPartition();
 		
 		if(!this.currentFiles.containsKey(partition)){
-			AbstractExportManager exportManager = new DefaultExportManager()
-			.withFileNameFormat(((PartitionedFileNameFormat) DeepCopyHelper.copy(this.exportManagerPrototype.fileNameFormat)))
-			.withRecordFormat((RecordFormat) DeepCopyHelper.copy(this.exportManagerPrototype.recordFormat))
-			.withRotationPolicy((FileRotationPolicy) DeepCopyHelper.copy(this.exportManagerPrototype.rotationPolicy))
-			.withSyncPolicy((SyncPolicy) DeepCopyHelper.copy(this.exportManagerPrototype.syncPolicy))
-			.addRotationActions(this.exportManagerPrototype.rotationActions)
+//			AbstractExportManager exportManager = new DefaultExportManager()
+//			.withFileNameFormat(((PartitionedFileNameFormat) DeepCopyHelper.copy(this.exportManagerPrototype.fileNameFormat)))
+//			.withRecordFormat((RecordFormat) DeepCopyHelper.copy(this.exportManagerPrototype.recordFormat))
+//			.withRotationPolicy((FileRotationPolicy) DeepCopyHelper.copy(this.exportManagerPrototype.rotationPolicy))
+//			.withSyncPolicy((SyncPolicy) DeepCopyHelper.copy(this.exportManagerPrototype.syncPolicy))
+//			.addRotationActions(this.exportManagerPrototype.rotationActions)
+//			.withDistributedFS(this.distributedFs)
+//			.withLocalFS(this.localFs)
+//			.useLocalForWrite()
+//			.init();
+			AbstractExportManager exportManager = ((DefaultExportManager) DeepCopyHelper.copy(this.exportManagerPrototype))
 			.withDistributedFS(this.distributedFs)
 			.withLocalFS(this.localFs)
-			.useLocalForWrite()
 			.init();
 			
 			this.currentFiles.put(partition, exportManager);

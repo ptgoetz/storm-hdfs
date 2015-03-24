@@ -84,7 +84,7 @@ public class DefaultPartitionedFileNameFormat implements PartitionedFileNameForm
 
 	@Override
 	public String getName(long rotation, long timeStamp) {
-		return this.prefix + "-" + this.componentId + "-" + this.taskId + "_" + timeStamp + "_" + rotation + this.extension;
+		return this.prefix + "_" + this.componentId + "_" + this.taskId + "_" + timeStamp + "_" + rotation + this.extension;
 	}
 
 	@Override

@@ -15,12 +15,13 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-package org.apache.storm.hdfs.common.rotation;
+package org.apache.storm.hdfs.common.rotation.multi;
 
 import java.io.FileInputStream;
 import java.io.FileOutputStream;
 import java.io.IOException;
 import java.io.OutputStream;
+import java.net.URI;
 import java.nio.file.FileAlreadyExistsException;
 import java.nio.file.Files;
 import java.nio.file.Paths;
@@ -29,6 +30,8 @@ import org.apache.commons.compress.compressors.CompressorException;
 import org.apache.commons.compress.compressors.CompressorOutputStream;
 import org.apache.commons.compress.compressors.CompressorStreamFactory;
 import org.apache.commons.compress.utils.IOUtils;
+import org.apache.hadoop.conf.Configuration;
+import org.apache.hadoop.fs.FSDataOutputStream;
 import org.apache.hadoop.fs.FileSystem;
 import org.apache.hadoop.fs.Path;
 import org.apache.storm.hdfs.common.enums.CompressionTypeEnum;
@@ -113,11 +116,4 @@ public class CompressAndMoveFileAction implements MultiFSRotationAction {
 		}
 		
 	}
-
-	public static void main(String[] args) {
-		Path sourcePath = new Path("/data/stats/2014_12_12/dasdsa.log");
-		Path destPath = new Path(sourcePath.getParent(), sourcePath.getName());
-		System.out.println(destPath);
-	}
-
 }
