@@ -29,6 +29,7 @@ import org.apache.storm.hdfs.bolt.format.SequenceFormat;
 import org.apache.storm.hdfs.bolt.rotation.FileRotationPolicy;
 import org.apache.storm.hdfs.bolt.sync.SyncPolicy;
 import org.apache.storm.hdfs.common.rotation.RotationAction;
+import org.apache.storm.hdfs.common.security.HdfsSecurityUtil;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -130,6 +131,7 @@ public class SequenceFileBolt extends AbstractHdfsBolt {
     }
 
     Path createOutputFile() throws IOException {
+        HdfsSecurityUtil.relogin();
         Path p = new Path(this.fsUrl + this.fileNameFormat.getPath(), this.fileNameFormat.getName(this.rotation, System.currentTimeMillis()));
         this.writer = SequenceFile.createWriter(
                 this.hdfsConfig,

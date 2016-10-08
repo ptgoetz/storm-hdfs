@@ -30,6 +30,7 @@ import org.apache.storm.hdfs.bolt.format.RecordFormat;
 import org.apache.storm.hdfs.bolt.rotation.FileRotationPolicy;
 import org.apache.storm.hdfs.bolt.sync.SyncPolicy;
 import org.apache.storm.hdfs.common.rotation.RotationAction;
+import org.apache.storm.hdfs.common.security.HdfsSecurityUtil;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -111,6 +112,10 @@ public class HdfsBolt extends AbstractHdfsBolt{
                 this.offset = 0;
                 this.rotationPolicy.reset();
             }
+        } catch (org.apache.hadoop.ipc.RemoteException re) {
+        	LOG.error("write/sync failed.", re);
+            this.collector.fail(tuple);
+            throw new RuntimeException(re); // kill the worker, needs to be restarted
         } catch (IOException e) {
             LOG.warn("write/sync failed.", e);
             this.collector.fail(tuple);
@@ -124,6 +129,7 @@ public class HdfsBolt extends AbstractHdfsBolt{
 
     @Override
     Path createOutputFile() throws IOException {
+        HdfsSecurityUtil.relogin();
         Path path = new Path(this.fileNameFormat.getPath(), this.fileNameFormat.getName(this.rotation, System.currentTimeMillis()));
         this.out = this.fs.create(path);
         return path;
