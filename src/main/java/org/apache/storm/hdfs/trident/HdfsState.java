@@ -1,7 +1,7 @@
 package org.apache.storm.hdfs.trident;
 
-import backtype.storm.task.IMetricsContext;
-import backtype.storm.topology.FailedException;
+import org.apache.storm.task.IMetricsContext;
+import org.apache.storm.topology.FailedException;
 import org.apache.hadoop.conf.Configuration;
 import org.apache.hadoop.fs.FSDataOutputStream;
 import org.apache.hadoop.fs.FileSystem;
@@ -19,9 +19,9 @@ import org.apache.storm.hdfs.trident.rotation.FileRotationPolicy;
 import org.apache.storm.hdfs.trident.rotation.TimedRotationPolicy;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import storm.trident.operation.TridentCollector;
-import storm.trident.state.State;
-import storm.trident.tuple.TridentTuple;
+import org.apache.storm.trident.operation.TridentCollector;
+import org.apache.storm.trident.state.State;
+import org.apache.storm.trident.tuple.TridentTuple;
 
 import java.io.IOException;
 import java.io.Serializable;
