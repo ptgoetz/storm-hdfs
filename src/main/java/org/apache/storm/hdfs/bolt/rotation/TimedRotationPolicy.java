@@ -1,6 +1,6 @@
 package org.apache.storm.hdfs.bolt.rotation;
 
-import backtype.storm.tuple.Tuple;
+import org.apache.storm.tuple.Tuple;
 
 public class TimedRotationPolicy implements FileRotationPolicy {
 
